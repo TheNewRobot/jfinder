@@ -1,0 +1,45 @@
+name: Job Monitor
+
+on:
+  schedule:
+    # Every 5 hours on weekdays (Monday-Friday) - Pacific Time
+    # Runs at: 12AM, 5AM, 10AM, 3PM, 8PM Pacific
+    - cron: '0 8,13,18,23,4 * * 1-5'
+    
+    # Every 12 hours on weekends (Saturday-Sunday) - Pacific Time
+    # Runs at: 9AM and 9PM Pacific
+    - cron: '0 17,5 * * 0,6'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        pip install requests beautifulsoup4
+        
+    - name: Run job monitor
+      env:
+        EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      run: python job_monitor.py
+      
+    - name: Commit updated job data
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add previous_jobs.json
+        git diff --staged --quiet || git commit -m "Update job tracking data"
+        git push
