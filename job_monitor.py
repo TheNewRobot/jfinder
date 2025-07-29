@@ -28,8 +28,7 @@ COMPANIES = {
 
 # Keywords - ONLY internships, with technical preferences
 INTERNSHIP_KEYWORDS = ["internship", "intern", "co-op", "coop"]  # Must have one of these
-TECHNICAL_KEYWORDS = ["reinforcement learning", "rl", "humanoid", "imitation learning", "robotics", 
-                      "ai controls", "machine learning", "ml", "controls", "embodied ai"]  # Technical preferences
+TECHNICAL_KEYWORDS = ["reinforcement learning", "rl", "humanoid", "imitation learning", "robotics", "ai controls", "machine learning", "ml", "controls", "embodied ai"]  # Technical preferences
 
 def get_page_content(url):
     """Fetch page content safely"""
@@ -41,28 +40,131 @@ def get_page_content(url):
         return None
 
 def extract_job_listings(html, company_name):
-    """Extract ONLY internship job listings - prioritize technical matches"""
+    """Extract ONLY actual internship job postings - company-specific parsing"""
     if not html:
         return []
     
     soup = BeautifulSoup(html, 'html.parser')
     jobs = []
     
-    # ONLY look for internship positions
-    internship_elements = soup.find_all(['a', 'div', 'span', 'h1', 'h2', 'h3'], string=lambda text: 
-        text and any(keyword.lower() in text.lower() for keyword in INTERNSHIP_KEYWORDS))
+    # Company-specific parsing strategies
+    if "greenhouse.io" in company_name.lower() or "greenhouse" in html.lower():
+        # Greenhouse job board parsing
+        job_elements = soup.find_all(['div', 'a'], attrs={
+            'class': lambda x: x and any(cls in str(x).lower() for cls in ['opening', 'job', 'position'])
+        })
+        # Also try direct job links
+        job_links = soup.find_all('a', href=lambda x: x and '/jobs/' in str(x))
+        job_elements.extend(job_links)
+        
+    elif "workday" in html.lower() or "myworkdayjobs" in company_name.lower():
+        # Workday job board parsing
+        job_elements = soup.find_all(['div', 'a'], attrs={
+            'data-automation-id': True
+        })
+        job_elements.extend(soup.find_all('a', href=lambda x: x and 'job' in str(x).lower()))
+        
+    elif "lever.co" in html.lower():
+        # Lever job board parsing
+        job_elements = soup.find_all(['div', 'a'], attrs={
+            'class': lambda x: x and 'posting' in str(x).lower()
+        })
+        
+    elif "breezy" in html.lower():
+        # BreezyHR parsing
+        job_elements = soup.find_all(['div', 'li'], attrs={
+            'class': lambda x: x and any(cls in str(x).lower() for cls in ['position', 'job'])
+        })
+        
+    else:
+        # Generic parsing for company career pages
+        # Look for common job listing patterns
+        job_elements = []
+        
+        # Method 1: Look for elements with job-related classes/IDs
+        job_containers = soup.find_all(['div', 'li', 'article', 'section'], attrs={
+            'class': lambda x: x and any(keyword in str(x).lower() for keyword in [
+                'job', 'position', 'opening', 'role', 'career', 'listing', 'opportunity'
+            ])
+        })
+        job_elements.extend(job_containers)
+        
+        # Method 2: Look for links that contain job-related URLs
+        job_links = soup.find_all('a', href=lambda x: x and any(keyword in str(x).lower() for keyword in [
+            'job', 'position', 'career', 'opening', 'role'
+        ]))
+        job_elements.extend(job_links)
+        
+        # Method 3: Look for structured data (JSON-LD job postings)
+        json_scripts = soup.find_all('script', type='application/ld+json')
+        for script in json_scripts:
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict) and data.get('@type') == 'JobPosting':
+                    title = data.get('title', '')
+                    if any(keyword.lower() in title.lower() for keyword in INTERNSHIP_KEYWORDS):
+                        jobs.append(f"🔍 {title}")
+                elif isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and item.get('@type') == 'JobPosting':
+                            title = item.get('title', '')
+                            if any(keyword.lower() in title.lower() for keyword in INTERNSHIP_KEYWORDS):
+                                jobs.append(f"🔍 {title}")
+            except:
+                continue
     
-    for element in internship_elements[:8]:  # Get more internship results
-        text = element.get_text(strip=True)
-        if len(text) > 10 and len(text) < 300:
-            text_lower = text.lower()
-            # Check if it has technical keywords we care about
-            if any(tech_keyword.lower() in text_lower for tech_keyword in TECHNICAL_KEYWORDS):
-                jobs.append(f"⭐ {text}")  # Star for high relevance (internship + our tech interests)
-            else:
-                jobs.append(text)  # Regular internship (still good!)
+    # Process found elements
+    for element in job_elements:
+        # Get text content
+        if element.name == 'a' and element.get('href'):
+            # For links, prefer the link text
+            text = element.get_text(strip=True)
+            if not text:  # If link has no text, try title attribute
+                text = element.get('title', '')
+        else:
+            text = element.get_text(strip=True)
+        
+        # Filter for internships only
+        if not text or len(text) < 10 or len(text) > 300:
+            continue
+            
+        text_lower = text.lower()
+        
+        # Must contain internship keywords
+        if not any(keyword.lower() in text_lower for keyword in INTERNSHIP_KEYWORDS):
+            continue
+            
+        # Skip generic/navigation text
+        skip_phrases = [
+            'view all', 'see all', 'browse', 'search jobs', 'job search',
+            'careers home', 'back to', 'apply now', 'learn more',
+            'follow us', 'join our', 'about us', 'contact us',
+            'sign up', 'subscribe', 'newsletter', 'follow along'
+        ]
+        
+        if any(skip in text_lower for skip in skip_phrases):
+            continue
+            
+        # Clean up the text
+        text = ' '.join(text.split())  # Remove extra whitespace
+        
+        # Check for technical relevance
+        if any(tech_keyword.lower() in text_lower for tech_keyword in TECHNICAL_KEYWORDS):
+            jobs.append(f"⭐ {text}")  # High relevance
+        else:
+            jobs.append(text)  # Regular internship
     
-    return jobs
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_jobs = []
+    for job in jobs:
+        if job not in seen:
+            seen.add(job)
+            unique_jobs.append(job)
+            if len(unique_jobs) >= 5:  # Limit to avoid spam
+                break
+    
+    return unique_jobs
 
 def load_previous_jobs():
     """Load previously found jobs"""
@@ -123,12 +225,21 @@ def main():
     new_jobs = {}
     
     for company, url in COMPANIES.items():
-        print(f"Checking {company}...")
+        print(f"\n🔍 Checking {company}...")
+        print(f"   URL: {url}")
         
         html = get_page_content(url)
+        if not html:
+            print(f"   ❌ Could not fetch page")
+            continue
+            
         jobs = extract_job_listings(html, company)
         
         if jobs:
+            print(f"   ✅ Found {len(jobs)} relevant posting(s):")
+            for job in jobs:
+                print(f"      • {job}")
+                
             current_jobs[company] = jobs
             
             # Check for new jobs
@@ -138,21 +249,23 @@ def main():
             
             if new_job_titles:
                 new_jobs[company] = list(new_job_titles)
-                print(f"🆕 Found {len(new_job_titles)} new internships at {company}")
+                print(f"   🆕 {len(new_job_titles)} are NEW!")
             else:
-                print(f"✅ No new internships at {company}")
+                print(f"   ℹ️  All previously seen")
         else:
-            print(f"⚠️  No relevant internships found at {company}")
+            print(f"   ⚠️  No relevant internships found")
     
     # Save current state
     save_current_jobs(current_jobs)
     
     # Send notifications
     if new_jobs:
+        print(f"\n🎉 Sending notification for {sum(len(jobs) for jobs in new_jobs.values())} new opportunities!")
         send_notification(new_jobs)
-        print(f"🎉 Total new internship opportunities: {sum(len(jobs) for jobs in new_jobs.values())}")
     else:
-        print("😴 No new internships found this time")
+        print("\n😴 No new internships found this time")
+    
+    print("\n✅ Monitoring complete!")
 
 if __name__ == "__main__":
     main()
