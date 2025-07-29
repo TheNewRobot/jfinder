@@ -25,8 +25,11 @@ COMPANIES = {
     "Apptronik": "https://apptronik.com/careers",
     "Robust AI": "https://www.robust.ai/careers",
 }
-# Keywords to look for
-KEYWORDS = ["reinforcement learning", "rl", "humanoid", "internship", "intern", "Imitation Learning"]
+
+# Keywords - ONLY internships, with technical preferences
+INTERNSHIP_KEYWORDS = ["internship", "intern", "co-op", "coop"]  # Must have one of these
+TECHNICAL_KEYWORDS = ["reinforcement learning", "rl", "humanoid", "imitation learning", "robotics", 
+                      "ai controls", "machine learning", "ml", "controls", "embodied ai"]  # Technical preferences
 
 def get_page_content(url):
     """Fetch page content safely"""
@@ -38,21 +41,26 @@ def get_page_content(url):
         return None
 
 def extract_job_listings(html, company_name):
-    """Extract job listings from HTML - customize per company"""
+    """Extract ONLY internship job listings - prioritize technical matches"""
     if not html:
         return []
     
     soup = BeautifulSoup(html, 'html.parser')
     jobs = []
     
-    # Generic approach - look for common job listing patterns
-    job_elements = soup.find_all(['a', 'div'], string=lambda text: 
-        text and any(keyword.lower() in text.lower() for keyword in KEYWORDS))
+    # ONLY look for internship positions
+    internship_elements = soup.find_all(['a', 'div', 'span', 'h1', 'h2', 'h3'], string=lambda text: 
+        text and any(keyword.lower() in text.lower() for keyword in INTERNSHIP_KEYWORDS))
     
-    for element in job_elements[:5]:  # Limit to avoid spam
+    for element in internship_elements[:8]:  # Get more internship results
         text = element.get_text(strip=True)
-        if len(text) > 10 and len(text) < 200:  # Reasonable job title length
-            jobs.append(text)
+        if len(text) > 10 and len(text) < 300:
+            text_lower = text.lower()
+            # Check if it has technical keywords we care about
+            if any(tech_keyword.lower() in text_lower for tech_keyword in TECHNICAL_KEYWORDS):
+                jobs.append(f"⭐ {text}")  # Star for high relevance (internship + our tech interests)
+            else:
+                jobs.append(text)  # Regular internship (still good!)
     
     return jobs
 
@@ -83,7 +91,7 @@ def send_notification(new_jobs):
     
     # Create message
     total_jobs = sum(len(jobs) for jobs in new_jobs.values())
-    message = f"🚨 *{total_jobs} New RL/Robotics Jobs Found!*\n\n"
+    message = f"🚨 *{total_jobs} New Internship Opportunities!*\n\n"
     
     for company, jobs in new_jobs.items():
         message += f"🏢 *{company}*:\n"
@@ -94,7 +102,7 @@ def send_notification(new_jobs):
     # Slack webhook payload
     payload = {
         "text": message,
-        "username": "Job Monitor Bot",
+        "username": "Internship Monitor Bot",
         "icon_emoji": ":robot_face:"
     }
     
@@ -108,7 +116,7 @@ def send_notification(new_jobs):
         print(f"❌ Failed to send Slack notification: {e}")
 
 def main():
-    print("🔍 Starting job monitoring...")
+    print("🔍 Starting internship monitoring...")
     
     previous_jobs = load_previous_jobs()
     current_jobs = {}
@@ -130,11 +138,11 @@ def main():
             
             if new_job_titles:
                 new_jobs[company] = list(new_job_titles)
-                print(f"🆕 Found {len(new_job_titles)} new jobs at {company}")
+                print(f"🆕 Found {len(new_job_titles)} new internships at {company}")
             else:
-                print(f"✅ No new jobs at {company}")
+                print(f"✅ No new internships at {company}")
         else:
-            print(f"⚠️  No relevant jobs found at {company}")
+            print(f"⚠️  No relevant internships found at {company}")
     
     # Save current state
     save_current_jobs(current_jobs)
@@ -142,9 +150,9 @@ def main():
     # Send notifications
     if new_jobs:
         send_notification(new_jobs)
-        print(f"🎉 Total new opportunities: {sum(len(jobs) for jobs in new_jobs.values())}")
+        print(f"🎉 Total new internship opportunities: {sum(len(jobs) for jobs in new_jobs.values())}")
     else:
-        print("😴 No new jobs found this time")
+        print("😴 No new internships found this time")
 
 if __name__ == "__main__":
     main()
