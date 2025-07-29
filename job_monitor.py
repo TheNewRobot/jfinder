@@ -1,8 +1,6 @@
 import requests
 import json
 import os
-import smtplib
-from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import hashlib
 
@@ -27,9 +25,8 @@ COMPANIES = {
     "Apptronik": "https://apptronik.com/careers",
     "Robust AI": "https://www.robust.ai/careers",
 }
-
 # Keywords to look for
-KEYWORDS = ["reinforcement learning", "rl", "ai controls","humanoid", "internship", "intern","controls"]
+KEYWORDS = ["reinforcement learning", "rl", "humanoid", "internship", "intern", "Imitation Learning"]
 
 def get_page_content(url):
     """Fetch page content safely"""
@@ -73,40 +70,42 @@ def save_current_jobs(jobs):
         json.dump(jobs, f, indent=2)
 
 def send_notification(new_jobs):
-    """Send email notification for new jobs"""
+    """Send Slack notification for new jobs"""
     if not new_jobs:
         return
     
-    # Use GitHub Secrets for email credentials
-    email = os.environ.get('EMAIL_ADDRESS')
-    password = os.environ.get('EMAIL_PASSWORD')
+    # Use GitHub Secrets for Slack webhook
+    webhook_url = os.environ.get('SLACK_WEBHOOK_URL')
     
-    if not email or not password:
-        print("Email credentials not set")
+    if not webhook_url:
+        print("Slack webhook URL not set")
         return
     
-    subject = f"🚨 New RL/Robotics Jobs Found! ({len(new_jobs)} new)"
+    # Create message
+    total_jobs = sum(len(jobs) for jobs in new_jobs.values())
+    message = f"🚨 *{total_jobs} New RL/Robotics Jobs Found!*\n\n"
     
-    body = "New job opportunities found:\n\n"
     for company, jobs in new_jobs.items():
-        body += f"🏢 {company}:\n"
+        message += f"🏢 *{company}*:\n"
         for job in jobs:
-            body += f"  • {job}\n"
-        body += "\n"
+            message += f"  • {job}\n"
+        message += "\n"
     
-    msg = MIMEText(body)
-    msg['Subject'] = subject
-    msg['From'] = email
-    msg['To'] = email
+    # Slack webhook payload
+    payload = {
+        "text": message,
+        "username": "Job Monitor Bot",
+        "icon_emoji": ":robot_face:"
+    }
     
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(email, password)
-            server.send_message(msg)
-        print(f"✅ Notification sent for {len(new_jobs)} companies")
+        response = requests.post(webhook_url, json=payload)
+        if response.status_code == 200:
+            print(f"✅ Slack notification sent for {len(new_jobs)} companies")
+        else:
+            print(f"❌ Failed to send Slack message: {response.status_code}")
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+        print(f"❌ Failed to send Slack notification: {e}")
 
 def main():
     print("🔍 Starting job monitoring...")

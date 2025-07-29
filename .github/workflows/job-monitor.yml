@@ -32,8 +32,7 @@ jobs:
         
     - name: Run job monitor
       env:
-        EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
-        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       run: python job_monitor.py
       
     - name: Commit updated job data
